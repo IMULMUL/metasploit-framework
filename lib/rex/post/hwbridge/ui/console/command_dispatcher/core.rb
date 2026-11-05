@@ -196,7 +196,7 @@ class Console::CommandDispatcher::Core
   def cmd_status_help
     print_line("Usage: status")
     print_line
-    print_line "Retrives the devices current status and statistics"
+    print_line "Retrieves the devices current status and statistics"
   end
 
   #
@@ -391,12 +391,12 @@ class Console::CommandDispatcher::Core
         end
 
         opts = (args + [ "SESSION=#{client.sid}" ]).join(',')
-        reloaded_mod.run_simple(
+        reloaded_mod.run_simple({
           #'RunAsJob' => true,
           'LocalInput'  => shell.input,
           'LocalOutput' => shell.output,
           'OptionStr'   => opts
-        )
+        })
       else
         # the rest of the arguments get passed in through the binding
         client.execute_script(script_name, args)
@@ -572,7 +572,7 @@ protected
   end
 
   def tab_complete_postmods
-    tabs = client.framework.modules.post.map { |name, klass|
+    tabs = client.framework.modules.post.module_refnames.each { | name |
       mod = client.framework.modules.post.create(name)
       if mod && mod.session_compatible?(client)
         mod.fullname.dup

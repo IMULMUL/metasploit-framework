@@ -37,9 +37,9 @@ class Console::CommandDispatcher::Stdapi::Sys
     "-p" => [ false, "Execute process in a pty (if available on target platform)"	   ],
     "-s" => [ true,  "Execute process in a given session as the session user"  ])
 
-  @@execute_opts_with_raw_mode = Rex::Parser::Arguments.new(@@execute_opts.fmt.merge(
+  @@execute_opts_with_raw_mode = @@execute_opts.merge(
     { '-r' => [ false, 'Raw mode'] }
-  ))
+  )
 
   #
   # Options used by the 'shell' command.
@@ -49,9 +49,9 @@ class Console::CommandDispatcher::Stdapi::Sys
     "-l" => [ false, "List available shells (/etc/shells)."                ],
     "-t" => [ true,  "Spawn a PTY shell (/bin/bash if no argument given)." ]) # ssh(1) -t
 
-  @@shell_opts_with_fully_interactive_shell = Rex::Parser::Arguments.new(@@shell_opts.fmt.merge(
+  @@shell_opts_with_fully_interactive_shell = @@shell_opts.merge(
     { '-i' => [ false, 'Drop into a fully interactive shell. (Only used in conjunction with `-t`).'] }
-  ))
+  )
 
   #
   # Options used by the 'reboot' command.
@@ -71,13 +71,13 @@ class Console::CommandDispatcher::Stdapi::Sys
   # Options used by the 'reg' command.
   #
   @@reg_opts = Rex::Parser::Arguments.new(
-    "-d" => [ true,  "The data to store in the registry value."		   ],
-    "-h" => [ false, "Help menu."						   ],
-    "-k" => [ true,  "The registry key path (E.g. HKLM\\Software\\Foo)."	   ],
-    "-t" => [ true,  "The registry value type (E.g. REG_SZ)."		   ],
-    "-v" => [ true,  "The registry value name (E.g. Stuff)."		   ],
+    "-d" => [ true,  "The data to store in the registry value." ],
+    "-h" => [ false, "Help menu." ],
+    "-k" => [ true,  "The registry key path (E.g. HKLM\\Software\\Foo)." ],
+    "-t" => [ true,  "The registry value type (E.g. REG_SZ)." ],
+    "-v" => [ true,  "The registry value name (E.g. Stuff)." ],
     "-r" => [ true,  "The remote machine name to connect to (with current process credentials" ],
-    "-w" => [ false, "Set KEY_WOW64 flag, valid values [32|64]."		   ])
+    "-w" => [ true,  "Set KEY_WOW64 flag, valid values [32|64]." ])
 
   #
   # Options for the 'ps' command.
@@ -298,7 +298,7 @@ class Console::CommandDispatcher::Stdapi::Sys
   end
 
   def cmd_execute_tabs(str, words)
-    return execute_opts.fmt.keys if words.length == 1
+    return execute_opts.option_keys if words.length == 1
     []
   end
 
@@ -310,7 +310,7 @@ class Console::CommandDispatcher::Stdapi::Sys
   end
 
   def cmd_shell_tabs(str, words)
-    return shell_opts.fmt.keys if words.length == 1
+    return shell_opts.option_keys if words.length == 1
     []
   end
 
@@ -660,7 +660,7 @@ class Console::CommandDispatcher::Stdapi::Sys
 
   #
   # validates an array of pids against the running processes on target host
-  # behavior can be controlled to allow/deny proces 0 and the session's process
+  # behavior can be controlled to allow/deny process 0 and the session's process
   # the pids:
   # - are converted to integers
   # - have had pid 0 removed unless allow_pid_0
@@ -686,7 +686,7 @@ class Console::CommandDispatcher::Stdapi::Sys
     # get the current session pid so we don't suspend it later
     mypid = client.sys.process.getpid.to_i
 
-    # remove nils & redundant pids, conver to int
+    # remove nils & redundant pids, convert to int
     clean_pids = pids.compact.uniq.map{|x| x.to_i}
     # now we look up the pids & remove bad stuff if nec
     clean_pids.delete_if do |p|
@@ -819,7 +819,7 @@ class Console::CommandDispatcher::Stdapi::Sys
   # Tab completion for the ps command
   #
   def cmd_ps_tabs(str, words)
-    return @@ps_opts.fmt.keys if words.length == 1
+    return @@ps_opts.option_keys if words.length == 1
 
     case words[-1]
     when '-A'
@@ -1006,6 +1006,33 @@ class Console::CommandDispatcher::Stdapi::Sys
             end
           end
 
+          if type == 'REG_BINARY'
+            # Use the same format accepted by REG ADD:
+            # REG ADD HKLM\Software\MyCo /v Data /t REG_BINARY /d fe340ead
+            if (data.length.even? == false)
+              print_error('Data length supplied to the -d argument was not appropriately padded to an even length string!')
+              return false
+            end
+            data_str_length = data.length
+            data = data.scan(/(?:[a-fA-F0-9]{2})/).map {|v| v.to_i(16)}
+            if (data_str_length/2 != data.length)
+              print_error('Invalid characters provided! Could not fully convert data provided to -d argument!')
+              return false
+            end
+            data = data.pack("C*")
+          elsif type == 'REG_DWORD' || type == 'REG_QWORD'
+            if data =~ /^\d+$/
+              data = data.to_i
+            elsif data =~ /^0x[a-fA-F0-9]+$/
+              data = data[2..].to_i(16)
+            else
+              print_error("Invalid data provided, #{type} must be numeric.")
+              return false
+            end
+          elsif type == 'REG_MULTI_SZ'
+            data = data.split('\0')
+          end
+
           open_key.set_value(value, client.sys.registry.type2str(type), data)
 
           print_line("Successfully set #{value} of #{type}.")
@@ -1050,6 +1077,8 @@ class Console::CommandDispatcher::Stdapi::Sys
           data = v.data
           if v.type == REG_BINARY
             data = data.unpack('H*')[0]
+          elsif v.type == REG_MULTI_SZ
+            data = data.join('\0')
           end
 
           print(
@@ -1093,7 +1122,7 @@ class Console::CommandDispatcher::Stdapi::Sys
     print_line("    createkey   Create the supplied registry key  [-k <key>]")
     print_line("    deletekey   Delete the supplied registry key  [-k <key>]")
     print_line("    queryclass  Queries the class of the supplied key [-k <key>]")
-    print_line("    setval      Set a registry value [-k <key> -v <val> -d <data>]")
+    print_line("    setval      Set a registry value [-k <key> -v <val> -d <data>]. Use a binary blob to set binary data with REG_BINARY type (e.g. setval -d ef4ba278)")
     print_line("    deleteval   Delete the supplied registry value [-k <key> -v <val>]")
     print_line("    queryval    Queries the data contents of a value [-k <key> -v <val>]")
     print_line
@@ -1104,7 +1133,7 @@ class Console::CommandDispatcher::Stdapi::Sys
   #
   def cmd_reg_tabs(str, words)
     if words.length == 1
-      return %w[enumkey createkey deletekey queryclass setval deleteval queryval] + @@reg_opts.fmt.keys
+      return %w[enumkey createkey deletekey queryclass setval deleteval queryval] + @@reg_opts.option_keys
     end
 
     case words[-1]
@@ -1123,7 +1152,7 @@ class Console::CommandDispatcher::Stdapi::Sys
     when '-w'
       return %w[32 64]
     when 'enumkey', 'createkey', 'deletekey', 'queryclass', 'setval', 'deleteval', 'queryval'
-      return @@reg_opts.fmt.keys
+      return @@reg_opts.option_keys
     end
 
     []
@@ -1247,7 +1276,7 @@ class Console::CommandDispatcher::Stdapi::Sys
   end
 
   def cmd_shutdown_tabs(str, words)
-    return @@shutdown_opts.fmt.keys if words.length == 1
+    return @@shutdown_opts.option_keys if words.length == 1
 
     case words[-1]
     when '-f'
@@ -1336,7 +1365,7 @@ class Console::CommandDispatcher::Stdapi::Sys
   # Tab completion for the suspend command
   #
   def cmd_suspend_tabs(str, words)
-    return @@suspend_opts.fmt.keys if words.length == 1
+    return @@suspend_opts.option_keys if words.length == 1
     []
   end
 

